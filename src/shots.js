@@ -1,101 +1,64 @@
-// The screenshot scenes behind ?shot=cover|drive|chase|side. Each one
-// stages the real game — the seeded city, real cars, the real police —
-// steps the simulation a fixed number of steps and parks the camera, so
-// the same seed always gives the same frame.
-
-import { MOD_SHOP } from './config.js';
-
-const STEP = 1 / 60;
-
-function stepWorld(ctx, steps, focus) {
-  const env = { scene: ctx.view.scene, sun: ctx.view.sun, hemi: ctx.view.hemi, ambient: ctx.view.ambient };
-  for (let i = 0; i < steps; i++) {
-    ctx.world.update(STEP, focus, env);
-    ctx.vehicles.updateTraffic(STEP, focus, 0);
-  }
-}
-
-function parkCamera(ctx, x, y, z, tx, ty, tz) {
-  ctx.view.camera.position.set(x, y, z);
-  ctx.view.camera.lookAt(tx, ty, tz);
-}
-
-/** Cover: the hero car on the marina promenade at sunset, windows lit. */
-function cover(ctx) {
-  const { world, vehicles, player } = ctx;
-  world.setCycle(0.5);
-  const car = vehicles.spawnCar('voltgt', -136, 214, 2.25, 'parked');
-  player.x = -132.5;
-  player.z = 217;
-  player.angle = 2.4;
-  player.mesh.position.set(player.x, 0, player.z);
-  player.mesh.rotation.y = player.angle;
-  stepWorld(ctx, 50, { x: -136, z: 214 });
-  parkCamera(ctx, -128.5, 2.4, 221.5, -136, 1.2, 214);
-  return car;
-}
-
-/** Drive: a Corso at speed through Centro in the morning. */
-function drive(ctx) {
-  const { world, vehicles, player } = ctx;
-  world.setCycle(0.3);
-  const car = vehicles.spawnCar('corso', 0, -40, Math.PI, 'player');
-  player.enterCar(car);
-  car.speed = 17;
-  const env = { scene: ctx.view.scene, sun: ctx.view.sun, hemi: ctx.view.hemi, ambient: ctx.view.ambient };
-  for (let i = 0; i < 46; i++) {
-    world.update(STEP, { x: car.x, z: car.z }, env);
-    vehicles.updateTraffic(STEP, { x: car.x, z: car.z }, 0);
-    vehicles.moveCar(car, STEP, null);
-    car.speed = 17;
-  }
-  parkCamera(ctx, car.x - Math.sin(car.angle) * 8.6, 3.1, car.z - Math.cos(car.angle) * 8.6, car.x + Math.sin(car.angle) * 7, 1.2, car.z + Math.cos(car.angle) * 7);
-}
-
-/** Chase: five stars at night — cruisers, a roadblock, the searchlight. */
-function chase(ctx) {
-  const { world, vehicles, player, police } = ctx;
-  world.setCycle(0.97);
-  const car = vehicles.spawnCar('voltgt', 0, -10, 0, 'player');
-  player.enterCar(car);
-  car.speed = 12;
-  police.setHeat(5);
-  const env = { scene: ctx.view.scene, sun: ctx.view.sun, hemi: ctx.view.hemi, ambient: ctx.view.ambient };
-  const target = { x: car.x, z: car.z, angle: 0, inCar: true, carSpeed: 12, carDead: false };
-  for (let i = 0; i < 170; i++) {
-    world.update(STEP, target, env);
-    vehicles.updateTraffic(STEP, target, 0);
-    police.update(STEP, target, {});
-    vehicles.moveCar(car, STEP, null);
-    car.speed = 12;
-    target.x = car.x;
-    target.z = car.z;
-  }
-  parkCamera(ctx, car.x - Math.sin(car.angle) * 11, 4.2, car.z - Math.cos(car.angle) * 11, car.x, 1.4, car.z);
-}
-
-/** Side: the Neon Works Garage — a painted, glowing build on the lift. */
-function side(ctx) {
-  const { world, vehicles, player } = ctx;
-  world.setCycle(0.8);
-  const car = vehicles.spawnCar('fluxs', MOD_SHOP.x, MOD_SHOP.z, 0.7, 'parked');
-  car.mods.paint = 1;
-  car.mods.paintColor = 0x18e0e8;
-  car.mods.glow = 1;
-  car.mods.glowColor = 0x18e0ff;
-  vehicles.applyMods(car);
-  player.x = MOD_SHOP.x + 3.4;
-  player.z = MOD_SHOP.z + 2.6;
-  player.angle = -0.9;
-  player.mesh.position.set(player.x, 0, player.z);
-  player.mesh.rotation.y = player.angle;
-  stepWorld(ctx, 40, { x: MOD_SHOP.x, z: MOD_SHOP.z });
-  parkCamera(ctx, MOD_SHOP.x + 7.5, 2.4, MOD_SHOP.z + 8.5, MOD_SHOP.x, 1, MOD_SHOP.z);
-}
+// Screenshot staging behind ?shot=title|drive|bust|phone&seed=1. Each scene is
+// built on the real systems, painted twice, then window.__shotReady is set.
+import { INTERCEPTOR, POIS } from './config.js';
 
 export function stageShot(name, ctx) {
-  if (name === 'drive') drive(ctx);
-  else if (name === 'chase') chase(ctx);
-  else if (name === 'side') side(ctx);
-  else cover(ctx);
+  const { S, sys, player, hud, camera, renderer, scene, city } = ctx;
+  S.hour = name === 'title' ? 18.4 : 17.3; // the action shots sit in brighter late light
+  city.update(S.hour, 0);
+  if (name === 'drive') {
+    ctx.startGame(false);
+    ctx.closeHelp();
+    sys.acceptJob(S); // job 1: the ride to Pier 3, objective line on the HUD
+    const car = ctx.nearestCar(60) || sys.cars[0];
+    if (car) {
+      car.x = -330; car.z = 200; // the Pier 3 road, mid-run south
+      car.heading = Math.atan2(POIS[0].x - car.x, POIS[0].z - car.z);
+      car.view.group.position.set(car.x, 0, car.z);
+      car.view.group.rotation.y = car.heading - Math.PI / 2;
+      player.x = car.x; player.z = car.z;
+      ctx.enterCar(car);
+      player.x = car.x; player.z = car.z;
+      car.speed = 14; player.speed = 14; // rolling: speedo up, wheels turned over
+      car.view.update(26, 1.2, false);
+    }
+    camera.position.set(player.x - Math.sin(player.heading) * 12.5, 6.4, player.z - Math.cos(player.heading) * 12.5);
+    camera.lookAt(player.x + Math.sin(player.heading) * 6, 1.6, player.z + Math.cos(player.heading) * 6);
+    ctx.paintHud(0, null);
+  } else if (name === 'bust') {
+    ctx.startGame(false);
+    ctx.closeHelp();
+    player.x = POIS[3].x + 2; player.z = POIS[3].z + 4;
+    player.heading = 2.4;
+    ctx.hero.group.position.set(player.x, 0, player.z); // no step runs in shot mode: place him by hand
+    ctx.hero.group.rotation.y = player.heading;
+    const cop = sys.spawnCar(INTERCEPTOR, 0x1f3b73, player.x + 4.2, player.z + 1.5, 2.6, 'cop');
+    cop.view.group.position.set(cop.x, 0, cop.z);
+    S.heat = 35; S.stars = 2; S.bust = 64;
+    camera.position.set(player.x - Math.sin(player.heading) * 9, 3.6, player.z - Math.cos(player.heading) * 9);
+    camera.lookAt(player.x + 2, 1.4, player.z);
+    ctx.paintHud(0, null);
+  } else if (name === 'phone') {
+    ctx.startGame(false);
+    ctx.closeHelp();
+    ctx.hero.group.position.set(player.x, 0, player.z);
+    ctx.hero.group.rotation.y = player.heading;
+    ctx.openPhone(1); // the jobs ledger, cargo-manifest styling
+    camera.position.set(player.x - 6, 3.2, player.z - 8);
+    camera.lookAt(player.x, 1.4, player.z + 4);
+    ctx.paintHud(0, null);
+  } else { // title
+    hud.setTitle(true, false);
+    camera.position.set(30, 23, 566);
+    camera.lookAt(-20, 9, 360);
+    ctx.paintHud(0, null);
+  }
+  let painted = 0;
+  function paint() {
+    renderer.render(scene, camera);
+    painted++;
+    if (painted < 2) requestAnimationFrame(paint);
+    else window.__shotReady = true;
+  }
+  requestAnimationFrame(paint);
 }
