@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Neon Harbor: Streets of Azul</title>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #07090f; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #eef4ff; }
+  #game { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #status { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .hidden { display: none !important; }
+
+  /* ------------------------------------------------ HUD */
+  #hud { position: fixed; inset: 0; pointer-events: none; z-index: 5; }
+  body.photo #hud, body.photo #phone { display: none; }
+  #cashbox { position: absolute; top: 14px; left: 16px; text-shadow: 0 2px 6px #000; }
+  #cash { font-size: 26px; font-weight: 800; color: #57f2a0; letter-spacing: .5px; }
+  #debtwrap { width: 210px; height: 8px; background: #ffffff26; border-radius: 4px; margin-top: 5px; }
+  #debtbar { height: 100%; width: 0%; background: linear-gradient(90deg, #18c8e8, #e83a9f); border-radius: 4px; }
+  #debttext { font-size: 12px; color: #bcd2ee; margin-top: 3px; }
+  #stars { position: absolute; top: 12px; right: 16px; font-size: 26px; letter-spacing: 3px; color: #ffd23c; text-shadow: 0 2px 6px #000; }
+  #stars .off { color: #ffffff30; }
+  #clockbox { position: absolute; top: 52px; right: 16px; text-align: right; font-size: 13px; color: #bcd2ee; text-shadow: 0 1px 4px #000; }
+  #objective { position: absolute; left: 50%; bottom: 118px; transform: translateX(-50%); max-width: 640px; text-align: center; font-size: 17px; font-weight: 600; text-shadow: 0 2px 6px #000; }
+  #objective small { display: block; font-size: 13px; font-weight: 400; color: #bcd2ee; }
+  #prompt { position: absolute; left: 50%; bottom: 84px; transform: translateX(-50%); font-size: 15px; background: #0a1220cc; border: 1px solid #18c8e866; padding: 6px 14px; border-radius: 8px; }
+  #combo { position: absolute; right: 18px; bottom: 210px; text-align: right; text-shadow: 0 2px 6px #000; }
+  #comboMult { font-size: 30px; font-weight: 800; color: #ffcf3f; }
+  #comboPts { font-size: 14px; color: #bcd2ee; }
+  #speedo { position: absolute; right: 18px; bottom: 150px; font-size: 22px; font-weight: 700; text-shadow: 0 2px 6px #000; }
+  #minimap { position: absolute; left: 16px; bottom: 16px; width: 184px; height: 184px; border-radius: 10px; border: 1px solid #ffffff2e; background: #0a1018d9; }
+  #crosshair { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); font-size: 18px; color: #ffffffcc; }
+  #toast { position: fixed; left: 50%; top: 18%; transform: translateX(-50%); font-size: 22px; font-weight: 700; text-align: center; text-shadow: 0 2px 8px #000; z-index: 8; pointer-events: none; }
+  #banner { position: fixed; left: 50%; top: 34%; transform: translateX(-50%); text-align: center; z-index: 8; pointer-events: none; }
+  #banner h2 { font-size: 40px; margin: 0; color: #ffd23c; text-shadow: 0 3px 12px #000; }
+  #banner p { font-size: 18px; margin: 4px 0 0; color: #dfeaff; text-shadow: 0 2px 8px #000; }
+
+  /* ------------------------------------------------ overlays */
+  .panel { position: fixed; z-index: 10; background: #0a1220f2; border: 1px solid #18c8e855; border-radius: 14px; box-shadow: 0 18px 50px #000c; }
+  #title { inset: 0; margin: auto; width: 560px; height: fit-content; padding: 30px 36px; text-align: center; }
+  #title h1 { margin: 0 0 2px; font-size: 42px; background: linear-gradient(90deg, #18c8e8, #e83a9f); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  #title h3 { margin: 0 0 14px; font-weight: 500; color: #bcd2ee; }
+  #title p { color: #dfeaff; line-height: 1.45; font-size: 14.5px; }
+  .btn { pointer-events: auto; display: inline-block; margin: 6px 4px 0; padding: 11px 22px; border-radius: 9px; border: 1px solid #18c8e8; background: #18c8e822; color: #eef4ff; font-size: 16px; font-weight: 700; cursor: pointer; }
+  .btn:hover { background: #18c8e844; }
+  .btn.alt { border-color: #e83a9f; background: #e83a9f22; }
+  #controls { margin-top: 16px; font-size: 12.5px; color: #8fa8c8; line-height: 1.7; text-align: left; columns: 2; }
+  #ending { inset: 0; margin: auto; width: 520px; height: fit-content; padding: 30px 36px; text-align: center; }
+
+  /* ------------------------------------------------ phone */
+  #phone { position: fixed; right: 22px; bottom: 22px; width: 322px; height: 520px; z-index: 11; background: #0b0f16f8; border: 2px solid #2b3648; border-radius: 26px; box-shadow: 0 18px 50px #000d; display: flex; flex-direction: column; overflow: hidden; }
+  #phoneHead { padding: 12px 16px 8px; background: #101827; }
+  #phoneHead b { font-size: 15px; }
+  #phoneTabs { font-size: 11.5px; color: #8fa8c8; margin-top: 2px; }
+  #phoneBody { flex: 1; overflow-y: auto; padding: 12px 16px; font-size: 13.5px; line-height: 1.5; }
+  #phoneBody h4 { margin: 10px 0 4px; color: #18c8e8; font-size: 13px; text-transform: uppercase; letter-spacing: 1px; }
+  #phoneBody .msg { background: #16233a; border-radius: 10px; padding: 8px 10px; margin: 6px 0; }
+  #phoneBody .row { display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px solid #ffffff10; }
+  #phoneBody .dim { color: #8fa8c8; }
+  #phoneBody .good { color: #57f2a0; }
+  #phoneBody .bad { color: #ff7a7a; }
+  #phoneFoot { padding: 8px 16px; font-size: 11.5px; color: #8fa8c8; background: #101827; }
+
+  /* ------------------------------------------------ weapon wheel + mod shop */
+  #wheel { left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 18px 22px; text-align: center; }
+  #wheel .slot { display: inline-block; margin: 0 6px; padding: 10px 12px; border-radius: 10px; border: 1px solid #ffffff2a; min-width: 92px; }
+  #wheel .slot.sel { border-color: #ffd23c; background: #ffd23c1f; }
+  #wheel .slot b { display: block; font-size: 14px; }
+  #wheel .slot span { font-size: 12px; color: #bcd2ee; }
+  #modshop { right: 22px; top: 70px; width: 330px; padding: 16px 18px; }
+  #modshop h3 { margin: 0 0 4px; color: #18c8e8; }
+  #modshop .row { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid #ffffff10; font-size: 13.5px; }
+  #modshop button { pointer-events: auto; background: #18c8e822; color: #eef4ff; border: 1px solid #18c8e8; border-radius: 6px; padding: 3px 10px; cursor: pointer; font-weight: 700; }
+  #modshop button:disabled { opacity: .35; cursor: default; }
+  #pause { inset: 0; margin: auto; width: 380px; height: fit-content; padding: 24px 30px; text-align: center; }
+</style>
+</head>
+<body>
+<canvas id="game" aria-label="Neon Harbor: Streets of Azul — an open-world driving game"></canvas>
+<p id="status" role="status" aria-live="polite"></p>
+
+<div id="hud" class="hidden">
+  <div id="cashbox">
+    <div id="cash">$0</div>
+    <div id="debtwrap"><div id="debtbar"></div></div>
+    <div id="debttext"></div>
+  </div>
+  <div id="stars"></div>
+  <div id="clockbox"><div id="clock"></div><div id="weather"></div></div>
+  <div id="combo" class="hidden"><div id="comboMult">x1.0</div><div id="comboPts">0 pts</div></div>
+  <div id="speedo"></div>
+  <canvas id="minimap" width="184" height="184"></canvas>
+  <div id="objective"></div>
+  <div id="prompt" class="hidden"></div>
+  <div id="crosshair" class="hidden">+</div>
+</div>
+<div id="toast"></div>
+<div id="banner" class="hidden"><h2 id="bannerTitle"></h2><p id="bannerSub"></p></div>
+
+<div id="phone" class="hidden">
+  <div id="phoneHead"><b>📱 AzulPhone</b><div id="phoneTabs"></div></div>
+  <div id="phoneBody"></div>
+  <div id="phoneFoot">T close · Tab next page · U accept contract</div>
+</div>
+
+<div id="wheel" class="panel hidden"></div>
+
+<div id="modshop" class="panel hidden">
+  <h3>🔧 Neon Works Garage</h3>
+  <div id="modshopBody"></div>
+  <p style="font-size:12px;color:#8fa8c8">Drive your car in, pick a mod, M or Esc to leave. Mods stick to the car and save with it.</p>
+</div>
+
+<div id="title" class="panel">
+  <h1>NEON HARBOR</h1>
+  <h3>Streets of Azul</h3>
+  <p>You owe Marisol <b>$100,000</b>. Twenty jobs across four chapters of Azul will clear it —
+     if the police, the rivals and the rain let you. Side work pays in cash: stashes, gigs, races,
+     bounties, getaway contracts, properties and a mod shop are all yours to run.</p>
+  <button class="btn" id="btnNew">New Game</button>
+  <button class="btn alt hidden" id="btnContinue">Continue</button>
+  <div id="controls">
+    WASD / arrows — move &amp; drive<br>
+    E — enter car / interact<br>
+    Shift — sprint · Space — handbrake<br>
+    Mouse / F — aim &amp; fire (on foot)<br>
+    Q hold + 1-4 — weapon wheel · R reload<br>
+    T — phone · Tab — phone page<br>
+    G — drone · P — photo mode<br>
+    B — call crew · C — radio · H — horn<br>
+    Y — gigs · U — accept contract<br>
+    M — mod shop (at the garage) · Esc — pause
+  </div>
+</div>
+
+<div id="ending" class="panel hidden">
+  <h1 style="color:#57f2a0">DEBT CLEARED</h1>
+  <p id="endingText"></p>
+  <button class="btn" id="btnFree">Keep roaming Azul</button>
+</div>
+
+<div id="pause" class="panel hidden">
+  <h3 style="margin-top:0">Paused</h3>
+  <p style="color:#bcd2ee;font-size:14px">Esc to resume. Your progress saves automatically.</p>
+  <button class="btn" id="btnResume">Resume</button>
+  <button class="btn alt" id="btnTitle">Title screen</button>
+</div>
+
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js" } }
+</script>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
