@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign make.fun Delegation</title>
+<style>
+  body { font-family: system-ui, sans-serif; margin: 24px; line-height: 1.5; }
+  pre { white-space: pre-wrap; word-break: break-all; background: #f4f4f4; padding: 12px; border-radius: 8px; font-size: 12px; }
+  button { font-size: 16px; padding: 12px 18px; margin: 8px 8px 8px 0; border-radius: 8px; }
+  textarea { width: 100%; height: 90px; font-size: 12px; }
+  .ok { color: green; } .warn { color: #b30000; }
+</style>
+</head>
+<body>
+<h2>Sign make.fun Delegation</h2>
+<p>Tanda tangani pesan delegasi ini dengan wallet Phantom kamu. Ini cuma tanda tangan pesan (off-chain), bukan transaksi, tidak ada dana yang bergerak.</p>
+<pre id="msg"></pre>
+<p id="status">Langkah 1: connect Phantom. Langkah 2: sign. Langkah 3: copy signature (base64) dan kirim balik ke chat Muse.</p>
+<button id="connect">Connect Phantom</button>
+<button id="sign" disabled>Sign Message</button>
+<p id="addr"></p>
+<p>Hasil signature (base64):</p>
+<textarea id="sig" readonly placeholder="Signature akan muncul di sini"></textarea>
+
+<script>
+const MESSAGE = "make.fun delegation v1; Domain: make.fun; Payout: 2x6iimidLWHnbdNFsdXBXo4CmcJuW5MWvyitLTAnuACw; Agent: 8zbKBGh79bX7RqtCGjThjcgmvE9wmjA3J3rFduCNHeuA; Competitions: u-irvan-motion-seventeen-syllables-of-debugging-d194b605; Nonce: c13566e9029063e2df1c9028d328a46e; Issued At: 2026-11-24T06:54:30.029Z; Expiration Time: 2027-02-22T06:54:30.029Z";
+const EXPECTED = "2x6iimidLWHnbdNFsdXBXo4CmcJuW5MWvyitLTAnuACw";
+document.getElementById("msg").textContent = MESSAGE;
+
+const statusEl = document.getElementById("status");
+const addrEl = document.getElementById("addr");
+const signBtn = document.getElementById("sign");
+
+function getProvider() {
+  if (window.phantom && window.phantom.solana) return window.phantom.solana;
+  if (window.solana) return window.solana;
+  return null;
+}
+
+document.getElementById("connect").addEventListener("click", async () => {
+  const provider = getProvider();
+  if (!provider) {
+    statusEl.innerHTML = "<span class='warn'>Phantom tidak ditemukan. Buka halaman ini di browser di dalam aplikasi Phantom.</span>";
+    return;
+  }
+  try {
+    const resp = await provider.connect();
+    const pubkey = resp.publicKey.toString();
+    if (pubkey === EXPECTED) {
+      addrEl.innerHTML = "<span class='ok'>Connected: " + pubkey + "</span>";
+      signBtn.disabled = false;
+    } else {
+      addrEl.innerHTML = "<span class='warn'>Connected: " + pubkey + " — ini bukan wallet payout 2x6i...uACw. Ganti wallet dulu.</span>";
+      signBtn.disabled = true;
+    }
+  } catch (e) {
+    statusEl.textContent = "Connect gagal: " + e.message;
+  }
+});
+
+signBtn.addEventListener("click", async () => {
+  const provider = getProvider();
+  if (!provider) return;
+  try {
+    const encoded = new TextEncoder().encode(MESSAGE);
+    const result = await provider.signMessage(encoded, "utf8");
+    const sigBytes = result.signature;
+    let binary = "";
+    sigBytes.forEach((b) => { binary += String.fromCharCode(b); });
+    const base64 = btoa(binary);
+    document.getElementById("sig").value = base64;
+    statusEl.innerHTML = "<span class='ok'>Berhasil ditandatangani. Copy signature di atas dan kirim ke chat Muse.</span>";
+  } catch (e) {
+    statusEl.textContent = "Sign gagal: " + e.message;
+  }
+});
+</script>
+</body>
+</html>
