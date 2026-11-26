@@ -29,7 +29,7 @@ const audio = createAudio();
 const world = createWorld();
 
 let screen = SCREEN_TITLE;
-let view = VIEW_COCKPIT;
+let view = VIEW_CHASE;
 let menuIndex = 0;
 let current = { mode: MODE_COURSE, course: 0 };
 let flight = createFlight(world, MODE_COURSE, 0);

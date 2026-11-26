@@ -45,7 +45,7 @@
     '<tr><td>← / → or A / D</td><td>Bank left / right</td></tr>' +
     '<tr><td>W or R / S</td><td>Throttle up / down</td></tr>' +
     '<tr><td>F</td><td>Flaps: cycle 0 / 10 / 20 / 30 degrees</td></tr>' +
-    '<tr><td>C</td><td>Camera: cockpit view or chase view</td></tr>' +
+    '<tr><td>C</td><td>Camera: chase view or cockpit view</td></tr>' +
     '<tr><td>Space / Enter</td><td>Confirm, start, continue</td></tr>' +
     '<tr><td>P</td><td>Pause</td></tr>' +
     '<tr><td>X</td><td>Wind gusts on / off</td></tr>' +

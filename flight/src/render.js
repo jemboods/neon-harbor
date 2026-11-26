@@ -1260,7 +1260,7 @@ export function createRenderer(canvas) {
     });
 
     text('Arrows / WASD fly · W/S throttle · F flaps · C cockpit/chase · X gusts · M sound · P pause', 72, 640, 14, PALETTE.muted, 'left', '');
-    text('Enter or click to fly. The cockpit is the home view — C swaps to the chase camera.', 72, 668, 14, PALETTE.muted, 'left', '');
+    text('Enter or click to fly. The chase camera is the home view — C swaps into the cockpit.', 72, 668, 14, PALETTE.muted, 'left', '');
 
     // The pre-flight checklist card, sim style.
     panel(724, 108, 472, 316, 0.85);
