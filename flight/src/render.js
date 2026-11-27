@@ -1371,21 +1371,26 @@ export function createRenderer(canvas) {
 
     const palette = dayPalette(state.phase);
     const world = state.world;
-    const cam = makeCamera(state, ui.view);
+    // The title is met from the cockpit, whatever camera the last sortie
+    // used: the attract flight is the home view's live sky, panel and all,
+    // so the first thing a player sees is the seat they will fly from.
+    const viewKind = screen === SCREEN_TITLE ? VIEW_COCKPIT : ui.view;
+    const cam = makeCamera(state, viewKind);
     drawSkyAndSea(cam, palette, state.phase);
     const sorted = [...world.islands].sort((a, b) =>
       Math.hypot(b.x - cam.cx, b.y - cam.cy) - Math.hypot(a.x - cam.cx, a.y - cam.cy));
     for (const island of sorted) drawIsland(cam, world, island, palette);
     drawAirport(cam, world, state, palette);
     drawRings(cam, state);
-    drawClouds(cam, world, state, ui.view);
+    drawClouds(cam, world, state, viewKind);
 
     if (screen === SCREEN_TITLE) {
-      drawPlaneChase(cam, state);
+      drawCockpitFrame(cam, state);
+      drawCockpit(state, ui);
       drawTitle(state, ui);
       return;
     }
-    if (ui.view === VIEW_COCKPIT) {
+    if (viewKind === VIEW_COCKPIT) {
       drawCockpitFrame(cam, state);
       drawCockpit(state, ui);
     } else {
