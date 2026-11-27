@@ -4,8 +4,8 @@
 // stacked contour rings far to near, the airport on Pulau Besar, the rings, the clouds,
 // and (in chase view) the plane. The cockpit view bolts a Cessna-style panel over the
 // lower frame: the standard six-pack, a tachometer, fuel, flaps and a radio stack.
-import { ASI, DAY_KEYS, FIELD, FONT, PALETTE, PLANE, RPM, UNITS, WORLD_EXTENT } from './config.js';
-import { END_COMPLETE, END_CRASHED, END_DITCHED, END_LANDED, MODE_COURSE, MODE_LANDING } from './flight.js';
+import { ASI, DAY_KEYS, FIELD, FLAP, FONT, GUIDE_SHOW_SECONDS, PALETTE, PLANE, RPM, UNITS, WORLD_EXTENT } from './config.js';
+import { END_COMPLETE, END_CRASHED, END_DITCHED, END_LANDED, MODE_COURSE, MODE_FREE, MODE_LANDING } from './flight.js';
 import { ISLAND_VOLCANO } from './world.js';
 import { drawPlaneModel } from './plane.js';
 
@@ -1176,6 +1176,99 @@ export function createRenderer(canvas) {
     drawCallout(state, PANEL_TOP - 54);
   }
 
+  // --- The how-to-fly guide ----------------------------------------------------
+
+  /** The guide card's frame: top centre, clear of the compass strip and the callouts. */
+  const GUIDE_X = (FIELD.width - 640) / 2;
+  const GUIDE_Y = 78;
+  const GUIDE_W = 640;
+  const GUIDE_H = 288;
+
+  /** The guide is up while the sortie is younger than its allowance and not dismissed. */
+  function guideVisible(state, ui) {
+    return !ui.guideDismissed && state.elapsed < GUIDE_SHOW_SECONDS;
+  }
+
+  /** What this sortie asks of the pilot, in two lines, from the mode the state carries. */
+  function guideObjectiveLines(state) {
+    if (state.mode === MODE_COURSE && state.course) {
+      return [
+        `${state.course.name} — thread all ${state.course.rings.length} rings in order.`,
+        'The next ring glows amber. Finish under par for a time bonus.',
+      ];
+    }
+    if (state.mode === MODE_LANDING) {
+      return [
+        'Landing challenge — you are on final for runway 27, flaps at 20°.',
+        'Hold 60–65 kt with full flap; a soft, centred touchdown grades S to D.',
+      ];
+    }
+    return [
+      'Free flight — no clock, no rings, just the archipelago.',
+      'Mind the fuel gauge; the runway at Pulau Besar refuels you.',
+    ];
+  }
+
+  /** One control row: the key in amber, what it does in cream right after it. */
+  function drawGuideControl(x, y, key, does) {
+    text(key, x, y, 14, PALETTE.amber, 'left', '700');
+    text(does, x + context.measureText(key).width + 9, y, 14, PALETTE.cream, 'left', '');
+  }
+
+  /** One of the 172's book numbers, boxed the way the cockpit's readouts are. */
+  function drawGuideStat(x, y, label, value) {
+    panel(x, y, 112, 44, 0.9);
+    text(label, x + 8, y + 16, 9.5, PALETTE.muted, 'left', '700');
+    text(value, x + 8, y + 37, 17, PALETTE.cream, 'left', '700');
+  }
+
+  function drawGuide(state, ui) {
+    if (!guideVisible(state, ui)) return;
+    const remain = Math.max(1, Math.ceil(GUIDE_SHOW_SECONDS - state.elapsed));
+    panel(GUIDE_X, GUIDE_Y, GUIDE_W, GUIDE_H, 0.88);
+
+    text('HOW TO FLY', GUIDE_X + 24, GUIDE_Y + 34, 16, PALETTE.amber, 'left', '700');
+    text(`HIDES IN ${remain} S`, GUIDE_X + GUIDE_W - 24, GUIDE_Y + 34, 12, PALETTE.muted, 'right', '700');
+
+    const [objectiveA, objectiveB] = guideObjectiveLines(state);
+    text(objectiveA, GUIDE_X + 24, GUIDE_Y + 62, 15.5, PALETTE.cream, 'left', '');
+    text(objectiveB, GUIDE_X + 24, GUIDE_Y + 86, 15.5, PALETTE.cream, 'left', '');
+
+    context.strokeStyle = PALETTE.panelLine;
+    context.lineWidth = 1;
+    context.beginPath();
+    context.moveTo(GUIDE_X + 24, GUIDE_Y + 102);
+    context.lineTo(GUIDE_X + GUIDE_W - 24, GUIDE_Y + 102);
+    context.stroke();
+
+    const leftX = GUIDE_X + 26;
+    const rightX = GUIDE_X + 344;
+    const rowYs = [128, 151, 174, 197].map((offset) => GUIDE_Y + offset);
+    drawGuideControl(leftX, rowYs[0], 'Mouse', 'move to pitch and bank');
+    drawGuideControl(leftX, rowYs[1], '↑ ↓ ← →', 'pitch and bank (A / D bank)');
+    drawGuideControl(leftX, rowYs[2], 'W / R · S', 'throttle up · down');
+    drawGuideControl(leftX, rowYs[3], 'F', 'flaps 0 / 10 / 20 / 30');
+    drawGuideControl(rightX, rowYs[0], 'C', 'cockpit / chase camera');
+    drawGuideControl(rightX, rowYs[1], 'X', 'gusts on or off');
+    drawGuideControl(rightX, rowYs[2], 'M', 'sound on or off');
+    drawGuideControl(rightX, rowYs[3], 'P / Esc', 'pause / back');
+
+    // The 172's book numbers, worked out from the same constants the model flies by.
+    const fullFlapDeg = FLAP.steps[FLAP.steps.length - 1];
+    const rotateKt = Math.round(PLANE.rotateSpeed * UNITS.knotsPerMs);
+    const stallKt = Math.round(PLANE.stallSpeed * UNITS.knotsPerMs);
+    const stallFlapKt = Math.round(PLANE.stallSpeed * (1 - fullFlapDeg * FLAP.stallPerDeg) * UNITS.knotsPerMs);
+    const statY = GUIDE_Y + 214;
+    drawGuideStat(GUIDE_X + 20, statY, 'ROTATE', `${rotateKt} kt`);
+    drawGuideStat(GUIDE_X + 142, statY, 'STALL', `${stallKt} kt`);
+    drawGuideStat(GUIDE_X + 264, statY, 'STALL · FULL FLAP', `${stallFlapKt} kt`);
+    drawGuideStat(GUIDE_X + 386, statY, 'FINAL', '60–65 kt');
+    drawGuideStat(GUIDE_X + 508, statY, 'VNE', `${ASI.redline} kt`);
+
+    text('Space, Enter or click closes this — it hides itself when the countdown ends.',
+      FIELD.width / 2, GUIDE_Y + 282, 13, PALETTE.muted, 'center', '');
+  }
+
   // --- Screens -----------------------------------------------------------------
 
   const CHECKLIST = [
@@ -1210,7 +1303,7 @@ export function createRenderer(canvas) {
     });
 
     text('Arrows / WASD fly · W/S throttle · F flaps · C cockpit/chase · X gusts · M sound · P pause', 72, 640, 14, PALETTE.muted, 'left', '');
-    text('Enter or click to fly. The chase camera is the home view — C swaps into the cockpit.', 72, 668, 14, PALETTE.muted, 'left', '');
+    text('Enter or click to fly. The cockpit is the home view — C swaps to the chase camera.', 72, 668, 14, PALETTE.muted, 'left', '');
 
     // The pre-flight checklist card, sim style.
     panel(724, 108, 472, 316, 0.85);
@@ -1299,6 +1392,7 @@ export function createRenderer(canvas) {
       drawPlaneChase(cam, state);
       if (screen !== SCREEN_OVER) drawHudChase(state, ui);
     }
+    if (screen === SCREEN_PLAY) drawGuide(state, ui);
     if (screen === SCREEN_OVER) drawOver(state, ui);
     if (screen === SCREEN_PAUSED) drawPaused();
   }

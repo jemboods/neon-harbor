@@ -7,6 +7,9 @@ export const FIELD = { width: 1280, height: 720 };
 /** The simulation's fixed step, in seconds: 60 updates a second whatever the display's rate. */
 export const STEP = 1 / 60;
 
+/** How long the how-to-fly guide stays up when a sortie starts, in seconds of flight time. */
+export const GUIDE_SHOW_SECONDS = 10;
+
 /** The seed the world is always grown from, so the archipelago (and the screenshots) repeat. */
 export const WORLD_SEED = 20261126;
 

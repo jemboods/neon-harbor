@@ -29,7 +29,8 @@ const audio = createAudio();
 const world = createWorld();
 
 let screen = SCREEN_TITLE;
-let view = VIEW_CHASE;
+let view = VIEW_COCKPIT;
+let guideDismissed = false;
 let menuIndex = 0;
 let current = { mode: MODE_COURSE, course: 0 };
 let flight = createFlight(world, MODE_COURSE, 0);
@@ -57,6 +58,7 @@ function menuItems() {
 function startSortie(mode, course) {
   current = { mode, course };
   flight = createFlight(world, mode, course);
+  guideDismissed = false;
   screen = SCREEN_PLAY;
   audio.ensure();
 }
@@ -107,6 +109,7 @@ function handleActions(actions) {
   if (screen === SCREEN_PLAY) {
     if (actions & (ACTION_PAUSE | ACTION_BACK)) screen = SCREEN_PAUSED;
     else {
+      if (actions & ACTION_CONFIRM) guideDismissed = true;
       if (actions & ACTION_VIEW) toggleView();
       if (actions & ACTION_GUSTS) flight.state.gustsOn = !flight.state.gustsOn;
     }
@@ -127,6 +130,7 @@ function handleActions(actions) {
 function ui() {
   return {
     view,
+    guideDismissed,
     menu: menuItems(),
     menuIndex,
     muted: audio.muted,
