@@ -153,5 +153,46 @@ export const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
 /** Unit flavour for the instruments: altitude in feet, speed in knots, sink in feet a minute. */
 export const UNITS = { feetPerMetre: 3.281, knotsPerMs: 1.944, fpmPerMs: 196.85 };
 
+/**
+ * Game feel: every juice intensity in one place, all of it scaled by the one master,
+ * so the whole pass can be toned down (or off) from a single number. The effects
+ * themselves live in feel.js as pure functions of the flight state; these are only
+ * the sizes, rates and windows they work to.
+ */
+export const FEEL = {
+  master: 1,
+  /** Stall buffet: fades in below stall speed times this, capped hard in pixels. */
+  buffetStartRatio: 1.14,
+  buffetMaxPx: 3.2,
+  buffetRateA: 37,
+  buffetRateB: 43,
+  buffetRateC: 13.7,
+  buffetRateD: 11.3,
+  /** Touchdown jolt: a damped camera bounce scaled by the sink at contact. */
+  joltMaxPx: 9,
+  joltSeconds: 0.55,
+  joltRate: 34,
+  joltDecay: 7.5,
+  joltSinkSoft: 1.2,
+  joltSinkHard: 7.5,
+  /** Touchdown dust: a handful of puffs drifting off the contact point. */
+  dustSeconds: 0.9,
+  dustCount: 7,
+  dustGrowMetres: 15,
+  /** Ring pass: an expanding pulse on the ring, and the counter's pop. */
+  ringPulseSeconds: 0.5,
+  ringPulseGrow: 0.45,
+  counterPopSeconds: 0.35,
+  counterPopScale: 0.3,
+  /** Speed lens: extra field of view at full speed, eased so finals stay calm. */
+  fovMaxExtraDeg: 4.5,
+  /** The end screen's score and grade land with this much pulse, then settle. */
+  bannerPulseSeconds: 0.6,
+  bannerPulseScale: 0.28,
+  /** Cockpit prop blur: alpha from engine stopped to full rpm. */
+  propBlurMin: 0.03,
+  propBlurMax: 0.2,
+};
+
 /** Sound levels: one master gain for the whole synthesized mix. */
 export const AUDIO = { masterGain: 0.5 };

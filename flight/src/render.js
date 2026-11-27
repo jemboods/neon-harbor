@@ -4,10 +4,14 @@
 // stacked contour rings far to near, the airport on Pulau Besar, the rings, the clouds,
 // and (in chase view) the plane. The cockpit view bolts a Cessna-style panel over the
 // lower frame: the standard six-pack, a tachometer, fuel, flaps and a radio stack.
-import { ASI, DAY_KEYS, FIELD, FLAP, FONT, GUIDE_SHOW_SECONDS, PALETTE, PLANE, RPM, UNITS, WORLD_EXTENT } from './config.js';
+import { ASI, DAY_KEYS, FEEL, FIELD, FLAP, FONT, GUIDE_SHOW_SECONDS, PALETTE, PLANE, RPM, UNITS, WORLD_EXTENT } from './config.js';
 import { END_COMPLETE, END_CRASHED, END_DITCHED, END_LANDED, MODE_COURSE, MODE_FREE, MODE_LANDING } from './flight.js';
 import { ISLAND_VOLCANO } from './world.js';
 import { drawPlaneModel } from './plane.js';
+import {
+  bannerPulseScale, buffetOffset, counterPop, dustPuffs, joltOffset,
+  propBlend, ringPulse, speedFovExtra, touchdownSeverity,
+} from './feel.js';
 
 export const SCREEN_TITLE = 'title';
 export const SCREEN_PLAY = 'play';
@@ -104,7 +108,52 @@ export function createRenderer(canvas) {
 
   // --- The camera -----------------------------------------------------------
 
-  function makeCamera(state, viewKind) {
+  // The end screen's effects are paced by frames drawn on it: the sim clock
+  // stops when the sortie ends, so the renderer counts its own frames per
+  // ending and lends that count to the banner pulse, the touchdown jolt and
+  // the dust as a surrogate clock. A frame count is not a clock read, and the
+  // screenshot scenes (ui.feel false) never see it move the picture.
+  let overKey = -1;
+  let overFrames = 0;
+
+  /**
+   * This frame's feel, assembled once: the camera shake (buffet plus jolt),
+   * the speed lens, and the raw intensities, kept on window.__feelNow so a
+   * test can watch the effects fire. Shake lives only in live play — the
+   * screenshot scenes (ui.feel false) draw the still, unshaken frame they
+   * were composed as. The buffet is a play-screen effect; the jolt also
+   * plays on the end screen, aged by the surrogate frame clock above,
+   * because a landing-mode touchdown ends the sortie in the same step and
+   * the sim clock never gives the jolt a second frame.
+   */
+  function computeFx(state, screen, ui) {
+    const live = ui.feel !== false;
+    const onOver = screen === SCREEN_OVER && state.endAt >= 0;
+    const touchAge = onOver && state.touchAt >= 0
+      ? (state.endAt - state.touchAt) + overFrames / 60
+      : undefined;
+    const ringAge = onOver && state.ringAt >= 0
+      ? (state.endAt - state.ringAt) + overFrames / 60
+      : undefined;
+    const buffet = live && screen === SCREEN_PLAY ? buffetOffset(state) : { x: 0, y: 0 };
+    const jolt = !live ? { x: 0, y: 0 }
+      : screen === SCREEN_PLAY ? joltOffset(state)
+      : screen === SCREEN_OVER ? joltOffset(state, touchAge)
+      : { x: 0, y: 0 };
+    return {
+      shakeX: buffet.x + jolt.x,
+      shakeY: buffet.y + jolt.y,
+      fovExtra: live ? speedFovExtra(state) : 0,
+      buffet: Math.hypot(buffet.x, buffet.y),
+      jolt: Math.hypot(jolt.x, jolt.y),
+      touchSeverity: touchdownSeverity(state),
+      touchAge,
+      ringAge,
+      dust: dustPuffs(state, touchAge) !== null,
+    };
+  }
+
+  function makeCamera(state, viewKind, feelFx) {
     const fx = Math.sin(state.heading);
     const fy = Math.cos(state.heading);
     let cx;
@@ -146,12 +195,12 @@ export function createRenderer(canvas) {
     const upX = rightY * fwdZ - rightZ * fwdY;
     const upY = rightZ * fwdX - rightX * fwdZ;
     const upZ = rightX * fwdY - rightY * fwdX;
-    const focal = (FIELD.height / 2) / Math.tan((PLANE.fovDeg * Math.PI) / 360);
+    const focal = (FIELD.height / 2) / Math.tan(((PLANE.fovDeg + feelFx.fovExtra) * Math.PI) / 360);
     const rollAngle = -state.roll * (viewKind === VIEW_COCKPIT ? 1 : 0.55);
     const cosR = Math.cos(rollAngle);
     const sinR = Math.sin(rollAngle);
-    const centreX = FIELD.width / 2;
-    const centreY = FIELD.height / 2;
+    const centreX = FIELD.width / 2 + feelFx.shakeX;
+    const centreY = FIELD.height / 2 + feelFx.shakeY;
 
     function project(x, y, z) {
       const dx = x - cx;
@@ -504,8 +553,57 @@ export function createRenderer(canvas) {
 
   // --- Rings, clouds, the plane ----------------------------------------------
 
-  function drawRings(cam, state) {
+  /** Touchdown dust: the puffs feel.js places at the contact point, blown flat
+   *  against the ground. Drawn with the world, so both views see them. */
+  function drawDust(cam, state, fx) {
+    const puffs = dustPuffs(state, fx.touchAge);
+    if (!puffs) return;
+    const ground = state.world.groundHeight(state.touchX, state.touchY);
+    for (const puff of puffs) {
+      const p = cam.project(puff.x, puff.y, ground + 1.1);
+      if (!p) continue;
+      context.fillStyle = `rgba(216, 205, 180, ${puff.alpha})`;
+      context.beginPath();
+      context.ellipse(p.x, p.y, Math.max(2, puff.r * p.scale), Math.max(1, puff.r * 0.38 * p.scale), 0, 0, Math.PI * 2);
+      context.fill();
+    }
+  }
+
+  function drawRings(cam, state, fx) {
     if (state.mode !== MODE_COURSE || !state.course) return;
+    // The ring just flown through wears an expanding pulse for half a second.
+    const pulse = ringPulse(state, fx.ringAge);
+    if (pulse) {
+      const ring = state.course.rings[pulse.index];
+      if (ring) {
+        const ease = 1 - Math.pow(1 - pulse.t, 2);
+        const radius = ring.radius * (1 + FEEL.ringPulseGrow * ease);
+        const rightX = ring.ny;
+        const rightY = -ring.nx;
+        const segs = 22;
+        const points = [];
+        let visible = true;
+        for (let s = 0; s < segs; s += 1) {
+          const a = (s / segs) * Math.PI * 2;
+          const p = cam.project(
+            ring.x + Math.cos(a) * radius * rightX,
+            ring.y + Math.cos(a) * radius * rightY,
+            ring.z + Math.sin(a) * radius,
+          );
+          if (!p) { visible = false; break; }
+          points.push(p);
+        }
+        if (visible) {
+          context.strokeStyle = `rgba(255, 180, 58, ${0.85 * (1 - pulse.t)})`;
+          context.lineWidth = clamp(260 * points[0].scale, 2, 7);
+          context.beginPath();
+          context.moveTo(points[0].x, points[0].y);
+          for (let s = 1; s < segs; s += 1) context.lineTo(points[s].x, points[s].y);
+          context.closePath();
+          context.stroke();
+        }
+      }
+    }
     state.course.rings.forEach((ring, index) => {
       if (index < state.nextRing) return;
       const isNext = index === state.nextRing;
@@ -587,6 +685,7 @@ export function createRenderer(canvas) {
       heading: state.heading, pitch: state.pitch, roll: state.roll,
       sun: sunDirection(state.phase), sunLevel: palette.sun, glow: palette.glow,
       prop: 'spin',
+      propBlend: propBlend(state),
     });
   }
 
@@ -600,7 +699,10 @@ export function createRenderer(canvas) {
     context.lineTo(FIELD.width * 0.30, PANEL_TOP + 26);
     context.closePath();
     context.fill();
-    context.fillStyle = 'rgba(235, 240, 244, 0.16)';
+    // The blur is only as present as the prop is working: a stopped engine
+    // shows through the windscreen, a spinning one veils it.
+    const blurAlpha = FEEL.propBlurMin + (FEEL.propBlurMax - FEEL.propBlurMin) * propBlend(state);
+    context.fillStyle = `rgba(235, 240, 244, ${blurAlpha})`;
     context.beginPath();
     context.ellipse(FIELD.width / 2, PANEL_TOP - 26, 120, 13, 0, 0, Math.PI * 2);
     context.fill();
@@ -755,7 +857,18 @@ export function createRenderer(canvas) {
     if (state.mode === MODE_COURSE && state.course) {
       panel(FIELD.width - 278, FIELD.height - 118, 250, 90, 0.72);
       text(state.course.name.toUpperCase(), FIELD.width - 262, FIELD.height - 90, 13, PALETTE.muted, 'left', '700');
-      text(`Ring ${Math.min(state.nextRing + 1, state.course.rings.length)} of ${state.course.rings.length}`, FIELD.width - 262, FIELD.height - 62, 20, PALETTE.white, 'left', '700');
+      // The ring count ticks with a small pop in the half second after a ring.
+      const pop = counterPop(state);
+      const ringLine = `Ring ${Math.min(state.nextRing + 1, state.course.rings.length)} of ${state.course.rings.length}`;
+      if (pop === 1) {
+        text(ringLine, FIELD.width - 262, FIELD.height - 62, 20, PALETTE.white, 'left', '700');
+      } else {
+        context.save();
+        context.translate(FIELD.width - 262, FIELD.height - 62);
+        context.scale(pop, pop);
+        text(ringLine, 0, 0, 20, PALETTE.white, 'left', '700');
+        context.restore();
+      }
       text(formatClock(state.time), FIELD.width - 44, FIELD.height - 62, 20, PALETTE.amber, 'right', '700');
       const ring = state.course.rings[state.nextRing];
       if (ring) {
@@ -1334,7 +1447,7 @@ export function createRenderer(canvas) {
     text('Enter — back to title', FIELD.width / 2, 412, 14.5, PALETTE.muted, 'center', '');
   }
 
-  function drawOver(state, ui) {
+  function drawOver(state, ui, pulse) {
     context.fillStyle = 'rgba(5, 10, 14, 0.45)';
     context.fillRect(0, 0, FIELD.width, FIELD.height);
     panel(340, 92, 600, 512, 0.92);
@@ -1343,9 +1456,14 @@ export function createRenderer(canvas) {
         : state.end === END_CRASHED ? 'Crashed' : 'Ditched';
     text(headline, FIELD.width / 2, 158, 38, PALETTE.white, 'center', '700');
     text(state.endReason, FIELD.width / 2, 192, 17, PALETTE.cream, 'center', '');
-    text(String(state.score), FIELD.width / 2, 268, 56, PALETTE.amber, 'center', '700');
-    text('SCORE', FIELD.width / 2, 292, 12.5, PALETTE.muted, 'center', '700');
-    if (state.grade) text(`Grade ${state.grade}`, FIELD.width / 2, 330, 24, PALETTE.white, 'center', '700');
+    // The score and grade land with the banner pulse, then settle at rest size.
+    context.save();
+    context.translate(FIELD.width / 2, 268);
+    context.scale(pulse, pulse);
+    text(String(state.score), 0, 0, 56, PALETTE.amber, 'center', '700');
+    text('SCORE', 0, 24, 12.5, PALETTE.muted, 'center', '700');
+    if (state.grade) text(`Grade ${state.grade}`, 0, 62, 24, PALETTE.white, 'center', '700');
+    context.restore();
     let y = state.grade ? 372 : 348;
     for (const row of state.breakdown) {
       text(row.label, 396, y, 17.5, PALETTE.cream, 'left', '');
@@ -1369,19 +1487,36 @@ export function createRenderer(canvas) {
     context.fillRect(0, 0, canvas.width, canvas.height);
     context.setTransform(view.scale, 0, 0, view.scale, view.x, view.y);
 
+    // The surrogate end-screen clock ticks before the frame's feel is read.
+    if (screen === SCREEN_OVER && state.endAt >= 0) {
+      if (overKey !== state.endAt) {
+        overKey = state.endAt;
+        overFrames = 0;
+      } else {
+        overFrames += 1;
+      }
+    } else if (screen !== SCREEN_OVER) {
+      overKey = -1;
+      overFrames = 0;
+    }
+
+    const fx = computeFx(state, screen, ui);
+    window.__feelNow = fx;
+
     const palette = dayPalette(state.phase);
     const world = state.world;
     // The title is met from the cockpit, whatever camera the last sortie
     // used: the attract flight is the home view's live sky, panel and all,
     // so the first thing a player sees is the seat they will fly from.
     const viewKind = screen === SCREEN_TITLE ? VIEW_COCKPIT : ui.view;
-    const cam = makeCamera(state, viewKind);
+    const cam = makeCamera(state, viewKind, fx);
     drawSkyAndSea(cam, palette, state.phase);
     const sorted = [...world.islands].sort((a, b) =>
       Math.hypot(b.x - cam.cx, b.y - cam.cy) - Math.hypot(a.x - cam.cx, a.y - cam.cy));
     for (const island of sorted) drawIsland(cam, world, island, palette);
     drawAirport(cam, world, state, palette);
-    drawRings(cam, state);
+    drawDust(cam, state, fx);
+    drawRings(cam, state, fx);
     drawClouds(cam, world, state, viewKind);
 
     if (screen === SCREEN_TITLE) {
@@ -1398,7 +1533,11 @@ export function createRenderer(canvas) {
       if (screen !== SCREEN_OVER) drawHudChase(state, ui);
     }
     if (screen === SCREEN_PLAY) drawGuide(state, ui);
-    if (screen === SCREEN_OVER) drawOver(state, ui);
+    if (screen === SCREEN_OVER) {
+      const settled = state.end === END_LANDED || state.end === END_COMPLETE;
+      const pulse = ui.feel !== false && settled ? bannerPulseScale(overFrames) : 1;
+      drawOver(state, ui, pulse);
+    }
     if (screen === SCREEN_PAUSED) drawPaused();
   }
 

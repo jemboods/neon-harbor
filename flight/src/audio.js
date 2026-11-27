@@ -8,7 +8,10 @@ export function createAudio() {
   let engineOsc = null;
   let engineSub = null;
   let engineGain = null;
+  let engineFilter = null;
   let windGain = null;
+  let windFilter = null;
+  let noiseBuffer = null;
   let muted = false;
 
   function ensure() {
@@ -29,7 +32,7 @@ export function createAudio() {
     engineOsc.type = 'sawtooth';
     engineSub = ctx.createOscillator();
     engineSub.type = 'square';
-    const engineFilter = ctx.createBiquadFilter();
+    engineFilter = ctx.createBiquadFilter();
     engineFilter.type = 'lowpass';
     engineFilter.frequency.value = 320;
     engineGain = ctx.createGain();
@@ -42,13 +45,13 @@ export function createAudio() {
     engineSub.start();
 
     const noiseLength = ctx.sampleRate * 1.5;
-    const noiseBuffer = ctx.createBuffer(1, noiseLength, ctx.sampleRate);
+    noiseBuffer = ctx.createBuffer(1, noiseLength, ctx.sampleRate);
     const data = noiseBuffer.getChannelData(0);
     for (let index = 0; index < noiseLength; index += 1) data[index] = Math.random() * 2 - 1;
     const windSource = ctx.createBufferSource();
     windSource.buffer = noiseBuffer;
     windSource.loop = true;
-    const windFilter = ctx.createBiquadFilter();
+    windFilter = ctx.createBiquadFilter();
     windFilter.type = 'bandpass';
     windFilter.frequency.value = 640;
     windFilter.Q.value = 0.6;
@@ -99,12 +102,58 @@ export function createAudio() {
       engineGain.gain.setTargetAtTime(engineLevel, t, 0.09);
       engineOsc.frequency.setTargetAtTime(38 + rpmFrac * 105, t, 0.09);
       engineSub.frequency.setTargetAtTime(19 + rpmFrac * 52, t, 0.09);
-      const windLevel = muted || state.onGround ? 0 : Math.min(0.06, (state.speed / 95) * 0.055);
+      // The note opens up as the engine works: the filter follows the tach,
+      // so spooling up the takeoff roll brightens as well as rises.
+      engineFilter.frequency.setTargetAtTime(230 + rpmFrac * 430, t, 0.12);
+      // The rush builds on a curve and climbs in pitch with the speed, so a
+      // dive sounds fast and a final stays calm.
+      const windFrac = Math.max(0, Math.min(1, state.speed / 95));
+      const windLevel = muted || state.onGround ? 0 : 0.075 * Math.pow(windFrac, 1.35);
       windGain.gain.setTargetAtTime(windLevel, t, 0.15);
+      windFilter.frequency.setTargetAtTime(360 + state.speed * 9.5, t, 0.2);
     },
     ring() {
       tone(880, 0, 0.16, 0.09);
       tone(1318, 0.09, 0.22, 0.08);
+    },
+    /**
+     * The wheels meeting the strip, scaled by how hard they met it: a low
+     * thud that drops away under the airframe, and a short chirp of tyre
+     * noise. A greaser (severity near 0) is barely a whisper of either.
+     */
+    touchdown(severity = 0.5) {
+      if (!ctx || muted) return;
+      const sev = Math.max(0, Math.min(1, severity));
+      const t = ctx.currentTime;
+      const osc = ctx.createOscillator();
+      const env = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(105, t);
+      osc.frequency.exponentialRampToValueAtTime(42, t + 0.22);
+      env.gain.setValueAtTime(0.0001, t);
+      env.gain.exponentialRampToValueAtTime(0.05 + 0.24 * sev, t + 0.012);
+      env.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+      osc.connect(env);
+      env.connect(ctx.destination);
+      osc.start(t);
+      osc.stop(t + 0.35);
+      if (noiseBuffer && sev > 0.05) {
+        const src = ctx.createBufferSource();
+        src.buffer = noiseBuffer;
+        const band = ctx.createBiquadFilter();
+        band.type = 'bandpass';
+        band.frequency.value = 840;
+        band.Q.value = 1.6;
+        const chirpEnv = ctx.createGain();
+        chirpEnv.gain.setValueAtTime(0.0001, t);
+        chirpEnv.gain.exponentialRampToValueAtTime(0.09 * sev, t + 0.01);
+        chirpEnv.gain.exponentialRampToValueAtTime(0.0001, t + 0.09);
+        src.connect(band);
+        band.connect(chirpEnv);
+        chirpEnv.connect(ctx.destination);
+        src.start(t, 0.3, 0.12);
+        src.stop(t + 0.12);
+      }
     },
     refuel() {
       tone(520, 0, 0.14, 0.08);

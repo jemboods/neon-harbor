@@ -483,7 +483,11 @@ export function drawPlaneModel(context, cam, place) {
   }
 
   if (place.prop === 'spin') {
-    // The propeller as a translucent disc at the nose, over the spinner.
+    // The propeller as a translucent disc at the nose, over the spinner. The
+    // disc is only as present as the prop is working: place.propBlend (0 with
+    // the engine stopped, 1 at full rpm) fades it toward a ghost.
+    const blend = clamp(place.propBlend ?? 1, 0, 1);
+    const discAlpha = DISC_ALPHA * (0.15 + 0.85 * blend);
     const rim = [];
     let visible = true;
     for (let i = 0; i < DISC_SEGMENTS; i += 1) {
@@ -499,7 +503,7 @@ export function drawPlaneModel(context, cam, place) {
       rim.push(p);
     }
     if (visible) {
-      context.fillStyle = `rgba(226, 233, 238, ${DISC_ALPHA})`;
+      context.fillStyle = `rgba(226, 233, 238, ${discAlpha})`;
       context.beginPath();
       context.moveTo(rim[0].x, rim[0].y);
       for (let i = 1; i < rim.length; i += 1) context.lineTo(rim[i].x, rim[i].y);

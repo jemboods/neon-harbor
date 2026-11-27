@@ -67,6 +67,16 @@ export function createFlight(world, mode, courseIndex = 0) {
     gustPhase: 0,
     ringsHit: 0,
     nextRing: 0,
+    // Feel telemetry: when the last ring was flown through and when the wheels
+    // last met the ground, and how hard. The model only records these; the
+    // renderer turns them into pulses, dust and camera kicks.
+    ringAt: -1,
+    ringIndex: -1,
+    touchAt: -1,
+    touchSink: 0,
+    touchX: 0,
+    touchY: 0,
+    endAt: -1,
     parked: false,
     time: 0,
     distance: 0,
@@ -151,6 +161,7 @@ export function createFlight(world, mode, courseIndex = 0) {
 
   function endSortie(kind, reason, rows, score) {
     state.end = kind;
+    state.endAt = state.elapsed;
     state.endReason = reason;
     state.breakdown = rows;
     state.score = score;
@@ -196,6 +207,10 @@ export function createFlight(world, mode, courseIndex = 0) {
       return EVENT_CRASH;
     }
     const grade = gradeTouchdown(vz, state.heading);
+    state.touchAt = state.elapsed;
+    state.touchSink = vz;
+    state.touchX = state.x;
+    state.touchY = state.y;
     state.onGround = true;
     state.z = runway.elevation;
     state.pitch = 0;
@@ -357,6 +372,8 @@ export function createFlight(world, mode, courseIndex = 0) {
         const qy = state.prevY + (state.y - state.prevY) * f;
         const qz = state.prevZ + (state.z - state.prevZ) * f;
         if (Math.hypot(qx - ring.x, qy - ring.y, qz - ring.z) <= ring.radius) {
+          state.ringIndex = state.nextRing;
+          state.ringAt = state.elapsed;
           state.ringsHit += 1;
           state.nextRing += 1;
           events |= EVENT_RING;

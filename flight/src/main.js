@@ -6,8 +6,9 @@ import { createWorld } from './world.js';
 import {
   createFlight, autopilotControl,
   MODE_COURSE, MODE_LANDING, MODE_FREE,
-  END_COMPLETE, END_LANDED, EVENT_RING, EVENT_REFUELLED,
+  END_COMPLETE, END_LANDED, EVENT_RING, EVENT_REFUELLED, EVENT_TOUCHDOWN,
 } from './flight.js';
+import { touchdownSeverity } from './feel.js';
 import {
   createRenderer,
   SCREEN_TITLE, SCREEN_PLAY, SCREEN_PAUSED, SCREEN_OVER,
@@ -91,6 +92,7 @@ function finishSortie() {
 function onEvents(events) {
   if (events & EVENT_RING) audio.ring();
   if (events & EVENT_REFUELLED) audio.refuel();
+  if (events & EVENT_TOUCHDOWN) audio.touchdown(touchdownSeverity(flight.state));
 }
 
 function toggleView() {
@@ -131,6 +133,9 @@ function ui() {
   return {
     view,
     guideDismissed,
+    // Feel runs in live play only: the screenshot scenes set __shotsActive
+    // and draw the still frames they were composed as.
+    feel: !window.__shotsActive,
     menu: menuItems(),
     menuIndex,
     muted: audio.muted,
