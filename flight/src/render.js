@@ -7,6 +7,7 @@
 import { ASI, DAY_KEYS, FIELD, FONT, PALETTE, PLANE, RPM, UNITS, WORLD_EXTENT } from './config.js';
 import { END_COMPLETE, END_CRASHED, END_DITCHED, END_LANDED, MODE_COURSE, MODE_LANDING } from './flight.js';
 import { ISLAND_VOLCANO } from './world.js';
+import { drawPlaneModel } from './plane.js';
 
 export const SCREEN_TITLE = 'title';
 export const SCREEN_PLAY = 'play';
@@ -398,7 +399,7 @@ export function createRenderer(canvas) {
     // The terminal block and its tower, then the two parked planes.
     const terminal = world.airport.terminal;
     drawBlock(cam, world, terminal);
-    for (const parked of world.airport.parked) drawParkedPlane(cam, world, parked);
+    for (const parked of world.airport.parked) drawParkedPlane(cam, world, parked, state.phase);
   }
 
   function drawRunwayNumber(cam, world, endSign, at) {
@@ -488,26 +489,17 @@ export function createRenderer(canvas) {
     context.fill();
   }
 
-  function drawParkedPlane(cam, world, parked) {
-    const p = cam.project(parked.x, parked.y, world.groundHeight(parked.x, parked.y) + 1.6);
+  function drawParkedPlane(cam, world, parked, phase) {
+    const ground = world.groundHeight(parked.x, parked.y);
+    const p = cam.project(parked.x, parked.y, ground + 1.4);
     if (!p || p.d > 3200) return;
-    const ahead = cam.project(parked.x + Math.sin(parked.heading) * 12, parked.y + Math.cos(parked.heading) * 12, world.groundHeight(parked.x, parked.y) + 1.6);
-    if (!ahead) return;
-    const angle = Math.atan2(ahead.y - p.y, ahead.x - p.x) + Math.PI / 2;
-    const s = p.scale;
-    context.save();
-    context.translate(p.x, p.y);
-    context.rotate(angle);
-    context.scale(s, s);
-    context.fillStyle = '#e8e6df';
-    context.beginPath();
-    context.ellipse(0, 0, 1.6, 6.4, 0, 0, Math.PI * 2);
-    context.fill();
-    context.fillRect(-5.6, -0.6, 11.2, 2.4);
-    context.fillRect(-2.8, 5.2, 5.6, 1.6);
-    context.fillStyle = PALETTE.amber;
-    context.fillRect(-0.7, -6.4, 1.4, 12.8);
-    context.restore();
+    const palette = dayPalette(phase);
+    drawPlaneModel(context, cam, {
+      x: parked.x, y: parked.y, z: ground,
+      heading: parked.heading, pitch: 0, roll: 0,
+      sun: sunDirection(phase), sunLevel: palette.sun, glow: palette.glow,
+      prop: 'parked',
+    });
   }
 
   // --- Rings, clouds, the plane ----------------------------------------------
@@ -577,67 +569,25 @@ export function createRenderer(canvas) {
   }
 
   function drawPlaneChase(cam, state) {
-    // A soft shadow on the surface below ties the plane to the world.
+    // A soft shadow on the surface below ties the plane to the world, sized to
+    // the real airframe: half the 11 m span one way, half the 8.28 m length other.
     const ground = state.world.groundHeight(state.x, state.y);
     const shadow = cam.project(state.x, state.y, ground + 0.8);
     if (shadow && state.z - ground < 260) {
       const closeness = 1 - (state.z - ground) / 260;
       context.fillStyle = `rgba(4, 20, 26, ${0.34 * closeness})`;
       context.beginPath();
-      context.ellipse(shadow.x, shadow.y, Math.max(3, 30 * shadow.scale), Math.max(2, 11 * shadow.scale), 0, 0, Math.PI * 2);
+      context.ellipse(shadow.x, shadow.y, Math.max(3, 5.9 * shadow.scale), Math.max(2, 2.6 * shadow.scale), 0, 0, Math.PI * 2);
       context.fill();
     }
-    const p = cam.project(state.x, state.y, state.z);
-    if (!p) return;
-    const s = clamp(p.scale, 0.5, 1.6);
-    context.save();
-    context.translate(FIELD.width / 2, FIELD.height * 0.56);
-    context.rotate(-state.roll * 0.55);
-    context.scale(s, s);
-    // The prop, a blurred disc with a spinner.
-    context.fillStyle = 'rgba(230, 238, 242, 0.30)';
-    context.beginPath();
-    context.ellipse(0, 26, 30, 7.5, 0, 0, Math.PI * 2);
-    context.fill();
-    // Tail, fuselage, wing, canopy, tailplane.
-    context.fillStyle = '#c33d2e';
-    context.beginPath();
-    context.moveTo(-3.4, -34);
-    context.lineTo(0, -48);
-    context.lineTo(3.4, -34);
-    context.closePath();
-    context.fill();
-    const body = context.createLinearGradient(-7, 0, 7, 0);
-    body.addColorStop(0, '#d8d3c3');
-    body.addColorStop(0.5, '#f4f1e6');
-    body.addColorStop(1, '#c9c2ae');
-    context.fillStyle = body;
-    context.beginPath();
-    context.ellipse(0, 0, 6.8, 34, 0, 0, Math.PI * 2);
-    context.fill();
-    context.fillStyle = PALETTE.amber;
-    context.fillRect(-6.8, -2, 13.6, 4.5);
-    context.fillStyle = '#e8e4d4';
-    context.beginPath();
-    context.moveTo(0, -8);
-    context.lineTo(-40, 7);
-    context.lineTo(-40, 13);
-    context.lineTo(0, 6);
-    context.lineTo(40, 13);
-    context.lineTo(40, 7);
-    context.closePath();
-    context.fill();
-    context.fillStyle = '#22303a';
-    context.beginPath();
-    context.ellipse(0, -7, 4.4, 8.5, 0, 0, Math.PI * 2);
-    context.fill();
-    context.fillStyle = '#e8e4d4';
-    context.fillRect(-13, -36, 26, 4.6);
-    context.fillStyle = '#8f2d23';
-    context.beginPath();
-    context.arc(0, 26, 3.4, 0, Math.PI * 2);
-    context.fill();
-    context.restore();
+    // The plane itself: the flat-shaded 3D model, lit by the day's sun.
+    const palette = dayPalette(state.phase);
+    drawPlaneModel(context, cam, {
+      x: state.x, y: state.y, z: state.z,
+      heading: state.heading, pitch: state.pitch, roll: state.roll,
+      sun: sunDirection(state.phase), sunLevel: palette.sun, glow: palette.glow,
+      prop: 'spin',
+    });
   }
 
   function drawCockpitFrame(cam, state) {
